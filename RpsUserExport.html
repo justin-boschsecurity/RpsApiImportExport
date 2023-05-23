@@ -177,6 +177,30 @@
     }
   }
 
+  async function deletePanelUsers() {
+    const selPanelsList = document.getElementById('selPanelsList');
+    const guid = selPanelsList.value;
+    const panelName = selPanelsList.options[selPanelsList.selectedIndex].panelName;
+    if(confirm(`Are you sure you want to delete all users from the panel\n'${panelName}'?`)) {
+      const response = await fetch(RpsApiBaseUrl + 'v2/panels/' + guid + '/users/all?update=UpdateDBOnly', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': 'Bearer ' + RpsApiToken,
+          'Content-Type': 'application/json'
+        },
+        body: '{ "resetDefault": "ResetDefault", "priority": "HIGH" }'
+      });
+      const responseJson = await response.json();
+      if(!response.ok){
+        lastError = response;
+        alert("There was a problem deleting users:\nStatus: " + response.status + ": " + response.statusText + "\n" + responseJson.error + "\n" + responseJson.error_description);
+      } else {
+        alert(`All users have been deleted from ${panelName} in the RPS database only. This can be undone by connecting to the panel and recieving panel data to overwrite RPS.`);
+        getPanelUsers();
+      }
+    }
+  }
+
   function initPanelUsersWorkingList(){
     panelUsersWorkingList = [];
     //Loop back through each user, add them to the working list, and mark them as having a card or not
@@ -278,6 +302,7 @@
       row.appendChild(createUserTd(user.user.keyFob, true));
     })
     document.getElementById('btnExport').style.visibility = '';
+    document.getElementById('btnDeleteUsers').style.visibility = '';
   }
 
   function createUserTd(text, excluded){
@@ -384,6 +409,7 @@ RPS API Password<input type="password" name="RpsApiPassword" id="tbxRpsApiPasswo
   </script>
 </div>
 <div id="divPanelUsersList"></div>
-<button id="btnExport" onclick="exportUsers()" style="visibility: hidden;">Export to CSV</button>
+<button id="btnExport" onclick="exportUsers()" style="visibility: hidden;">Export to CSV</button>&nbsp;&nbsp;
+<button id="btnDeleteUsers" onclick="deletePanelUsers()" style="visibility: hidden;">Delete all panel users</button>
 </body>
 </html>
