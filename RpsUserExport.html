@@ -281,33 +281,39 @@
     panelUsersTable.className = "panelUsersTable";
     const panelUsersTableHeadRow = panelUsersTable.appendChild(document.createElement('thead')).appendChild(document.createElement('tr'));
     let columnNumber = 0;
-    const excludedColumns = [0,1,7,8];
+    //20230525 removing column exclusions
+    //const excludedColumns = [0,1,7,8];
     ["User Number", "User Name", "First Name", "Last Name", "Passcode", "Site Code", "Card Number", "Authority Levels", "Keyfob ID"].forEach(headerValue => {
       const thisCell = panelUsersTableHeadRow.appendChild(document.createElement('th'))
-      if(excludedColumns.includes(columnNumber)) thisCell.className = "excluded";
+      //20230525 removing column exclusions
+      //if(excludedColumns.includes(columnNumber)) thisCell.className = "excluded";
       thisCell.appendChild(document.createTextNode(headerValue));
       columnNumber++;
     })
     const panelUsersTableBody = panelUsersTable.appendChild(document.createElement('tbody'));
     panelUsersWorkingList.forEach(user => {
       const row = panelUsersTableBody.appendChild(document.createElement('tr'));
-      row.appendChild(createUserTd(user.index, true));
-      row.appendChild(createUserTd(user.user.userName, true));
-      row.appendChild(createUserTd(user.user.firstName, false));
-      row.appendChild(createUserTd(user.user.lastName, false));
-      row.appendChild(createUserTd(user.user.passcode, false));
-      row.appendChild(createUserTd(user.user.hasCard ? user.user.siteCode : '', false));
-      row.appendChild(createUserTd(user.user.hasCard ? user.user.accessCode : '', false));
-      row.appendChild(createUserTd(user.user.areaLevels, true));
-      row.appendChild(createUserTd(user.user.keyFob, true));
+      //20230525 removing column exclusions
+      row.appendChild(createUserTd(user.index));//, true));
+      row.appendChild(createUserTd(user.user.userName));//, true));
+      row.appendChild(createUserTd(user.user.firstName));//, false));
+      row.appendChild(createUserTd(user.user.lastName));//, false));
+      row.appendChild(createUserTd(user.user.passcode));//, false));
+      row.appendChild(createUserTd(user.user.hasCard ? user.user.siteCode : ''));//, false));
+      row.appendChild(createUserTd(user.user.hasCard ? user.user.accessCode : ''));//, false));
+      row.appendChild(createUserTd(user.user.areaLevels));//, true));
+      row.appendChild(createUserTd(user.user.keyFob));//, true));
     })
     document.getElementById('btnExport').style.visibility = '';
     document.getElementById('btnDeleteUsers').style.visibility = '';
   }
 
-  function createUserTd(text, excluded){
+  //20230525 removing column exclusions
+  //function createUserTd(text, excluded){
+  function createUserTd(text){
     const thisCell = document.createElement('td');
-    if(excluded) thisCell.className = "excluded"
+    //20230525 removing column exclusions
+    //if(excluded) thisCell.className = "excluded"
     thisCell.appendChild(document.createTextNode(text));
     return thisCell;
   }
@@ -354,9 +360,19 @@
   }
 
   function exportUsers() {
-    const usersArray = [["First Name", "Last Name", "Passcode", "Site Code", "Card Number", "AMS Card Type", "Number of bits"]];
+    const usersArray = [["User Number", "First Name", "Last Name", "Passcode", "Site Code", "Card Number", "Authority Levels", "Key Fob", "AMS Card Type", "Number of bits"]];
     panelUsersWorkingList.forEach(user => {
-      usersArray.push([user.user.firstName, user.user.lastName, user.user.passcode, (user.user.hasCard ? user.user.siteCode : ''), (user.user.hasCard ? user.user.accessCode : ''), 5, cardBitLength])
+      usersArray.push([
+        user.index,
+        user.user.firstName, 
+        user.user.lastName, 
+        user.user.passcode, 
+        (user.user.hasCard ? user.user.siteCode : ''), 
+        (user.user.hasCard ? user.user.accessCode : ''), 
+        user.user.areaLevels,
+        user.user.keyFob,
+        5, 
+        cardBitLength])
     });
     exportToCsv(selPanelsList.options[selPanelsList.selectedIndex].panelName, usersArray);
   }

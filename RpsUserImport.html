@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RPS API User Export</title>
+  <style type="text/css">
+    body {
+      font-family: monospace;
+      font-size: 11pt;
+    }
+
+    body * {
+      margin: 5px;
+    }
+
+    [disabled] {
+      display: none;
+    }
+
+    .panelUsersTable, .panelUsersTable>thead>tr>th, .panelUsersTable>tbody>tr>td {
+      border-collapse: collapse;
+      border: 1px solid black;
+      padding: 0 1em;
+    }
+
+    .excluded {
+      color: gray;
+    }
+
+    select {
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+<script type="text/javascript">
+
+  var RpsApiBaseUrl;
+  var RpsApiToken;
+  var panelsList;
+  var panelUsersList;
+  var panelUsersWorkingList;
+  var lastClickedCBoxId;
+  var lastError;
+  var tokenResponse;
+  var cardFormat;
+  var cardBitLength;
+
+  const maxDescriptionLength = 35;
+
+  async function getRpsApiToken() {
+    const RpsApiHostname = document.getElementById('tbxRpsApiHostname').value;
+    const RpsApiUsername = document.getElementById('tbxRpsApiUsername').value;
+    const RpsApiPassword = document.getElementById('tbxRpsApiPassword').value;
+    RpsApiBaseUrl = "https://" + RpsApiHostname + ":9000/rpsapi/"
+    try { 
+        const tokenResp = await fetch(RpsApiBaseUrl + 'token', {
+        method: 'POST',
+        body: "grant_type=password&username=" + RpsApiUsername + "&password=" + RpsApiPassword,
+        headers: {
+          'Authorization': 'Basic 0g==',
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+      tokenResponse = tokenResp;
+      const tokenRespJson = await tokenResp.json();
+      if(!tokenResp.ok){
+        lastError = tokenResp;
+        alert("There was a problem getting the authentication token:\nStatus: " + tokenResp.status + ": " + tokenResp.statusText + "\n" + tokenRespJson.error + "\n" + tokenRespJson.error_description);
+      } else {
+        RpsApiToken = tokenRespJson.access_token;
+        console.log('RpsApiToken = ' + RpsApiToken);
+        document.getElementById('btnLogIn').disabled = true;
+        getPanels();
+      }
+    } catch (error) {
+      lastError = error;
+      console.log(error);
+      alert('Failed to submit authentication request. \nIs the hostname and full URL correct?\nIs the HTTPS certificate for RPS API loaded on this computer?');
+    }
+  }
+
+  async function getPanels() {
+    const response = await fetch(RpsApiBaseUrl + 'v2/panels', {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + RpsApiToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    const panelsRespJson = await response.json();
+    if(!response.ok){
+      lastError = response;
+      alert("There was a problem getting the panels list:\nStatus: " + response.status + ": " + response.statusText + "\n" + panelsRespJson.error + "\n" + panelsRespJson.error_description);
+    } else {
+      const selPanelsList = document.getElementById('selPanelsList');
+      panelsList = panelsRespJson.returnObject;
+      panelsList.sort((a, b) => (a.name.toLowerCase() > b.name.toLowerCase()) ? 1 : -1);
+      let nameLength = 0;
+      let typeLength = 0;
+      let accountLength = 0;
+      let descriptionLength = 0;
+      let revisionLength = 0;
+      panelsList.forEach(panel => {
+        if(panel.name === null) panel.name = '';
+        if(panel.panelType === null) panel.panelType = '';
+        if(panel.accountID === null) panel.accountID = '';
+        if(panel.description === null) panel.description = '';
+        if(panel.description.length > maxDescriptionLength) panel.description = panel.description.slice(0, maxDescriptionLength);
+        if(panel.romRevision === null) panel.romRevision = '';
+        nameLength = Math.max(panel.name.length, nameLength);
+        typeLength = Math.max(panel.panelType.length, typeLength);
+        accountLength = Math.max(panel.accountID.length, accountLength);
+        descriptionLength = Math.max(panel.description.length, descriptionLength);
+        revisionLength = Math.max(panel.romRevision.length, revisionLength);
+      })
+      panelsList.forEach(panel => {
+        let thisOption = selPanelsList.appendChild(document.createElement('option'));
+        thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.name.padEnd(nameLength + 3, '\xa0')));
+        thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.panelType.padEnd(typeLength + 3, '\xa0')));
+        thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.accountID.padEnd(accountLength + 3, '\xa0')));
+        thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.description.padEnd(descriptionLength + 3, '\xa0')));
+        thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.romRevision.padEnd(revisionLength + 3, '\xa0')));
+        thisOption.value = panel.guid;
+        thisOption.panelName = panel.name;
+      });
+      selPanelsList.size = (selPanelsList.options.length < 15 ? selPanelsList.options.length : 15);
+      selPanelsList.disabled = false;
+      document.getElementById('btnGetPanelUsers').disabled = false;
+      document.getElementById('divPanelUsersOptions').style.display = '';
+    }
+  }
+
+  async function getCardFormat() {
+    const selectedPanelGuid = document.getElementById('selPanelsList').value;
+    const response = await fetch(RpsApiBaseUrl + 'v2/panels/' + selectedPanelGuid + '/cardType', {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + RpsApiToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    const responseJson = await response.json();
+    if(!response.ok){
+      lastError = response;
+      alert("There was a problem getting the active card format:\nStatus: " + response.status + ": " + response.statusText + "\n" + responseJson.error + "\n" + responseJson.error_description);
+    } else {
+      cardFormat = responseJson.returnObject.cardType;
+      //Use a regular expression to extract the number of bits
+      cardBitLength = /\d+/.exec(cardFormat)[0];
+      getPanelUsers();
+    }
+  }
+
+  async function getPanelUsers() {
+    const selPanelsList = document.getElementById('selPanelsList');
+    const guid = selPanelsList.value;
+    const panelName = selPanelsList.options[selPanelsList.selectedIndex].text;
+    const response = await fetch(RpsApiBaseUrl + 'v2/panels/' + guid + '/users?completedInfo=true', {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + RpsApiToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    const responseJson = await response.json();
+    if(!response.ok){
+      lastError = response;
+      alert("There was a problem getting the list of users:\nStatus: " + response.status + ": " + response.statusText + "\n" + responseJson.error + "\n" + responseJson.error_description);
+    } else {
+      panelUsersList = responseJson.returnObject;
+      initPanelUsersWorkingList();
+      filterPanelUsersWorkingList();
+      createPanelUsersListTable();
+    }
+  }
+
+  async function deletePanelUsers() {
+    const selPanelsList = document.getElementById('selPanelsList');
+    const guid = selPanelsList.value;
+    const panelName = selPanelsList.options[selPanelsList.selectedIndex].panelName;
+    if(confirm(`Are you sure you want to delete all users from the panel\n'${panelName}'?`)) {
+      const response = await fetch(RpsApiBaseUrl + 'v2/panels/' + guid + '/users/all?update=UpdateDBOnly', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': 'Bearer ' + RpsApiToken,
+          'Content-Type': 'application/json'
+        },
+        body: '{ "resetDefault": "ResetDefault", "priority": "HIGH" }'
+      });
+      const responseJson = await response.json();
+      if(!response.ok){
+        lastError = response;
+        alert("There was a problem deleting users:\nStatus: " + response.status + ": " + response.statusText + "\n" + responseJson.error + "\n" + responseJson.error_description);
+      } else {
+        alert(`All users have been deleted from ${panelName} in the RPS database only. This can be undone by connecting to the panel and recieving panel data to overwrite RPS.`);
+        getPanelUsers();
+      }
+    }
+  }
+
+  function initPanelUsersWorkingList(){
+    panelUsersWorkingList = [];
+    //Loop back through each user, add them to the working list, and mark them as having a card or not
+    panelUsersList.forEach(panelUser => {
+      const user = JSON.parse(JSON.stringify(panelUser));
+      //Regardless of active format, if site code and card number are 0, the user has no card.
+      if(user.user.siteCode === 0 && user.user.accessCode === 0){
+        user.user.hasCard = false;
+      }else{
+        switch(cardFormat){
+        case "Wiegand26":
+          if(user.user.siteCode === 255 && user.user.accessCode === 65535){
+            user.user.hasCard = false;
+          }else{
+            user.user.hasCard = true;
+          }
+          break;
+        //The RPS API doesn't currently support 35 bit card formats. If it is chosen on a panel, it will report that it is Wiegand37
+        //case "35Bit":
+        case "Wiegand37":
+          if(user.user.siteCode === 0 && user.user.accessCode === 65535){
+            user.user.hasCard = false;
+          }else{
+            user.user.hasCard = true;
+          }
+          break;
+        case "Wiegand37WithSiteCode":
+          if(user.user.siteCode === 65535 && user.user.accessCode === 524287){
+            user.user.hasCard = false;
+          }else{
+            user.user.hasCard = true;
+          }
+        }
+      }
+      const firstSpaceInName = user.user.userName.indexOf(' ');
+      if(firstSpaceInName > 0){
+        user.user.firstName = user.user.userName.slice(0, firstSpaceInName);
+        user.user.lastName = user.user.userName.slice(firstSpaceInName + 1);
+      }else{
+        user.user.firstName = '';
+        user.user.lastName = user.user.userName;
+      }
+      panelUsersWorkingList.push(user);
+    })
+  }
+
+  function filterPanelUsersWorkingList(){
+    //References for the 'reduce' function:
+    //https://stackoverflow.com/questions/13964155/get-javascript-object-from-array-of-objects-by-value-of-property
+    //https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/reduce
+    panelUsersWorkingList = panelUsersWorkingList.reduce((accumulator, current) => (
+      //Don't include the installer user
+      current.index !== 0 
+      //Only include users with a passcode (unless that requirement is disabled)
+      && (current.user.passcode !== '' || !document.getElementById('cbxRequirePasscode').checked)
+      //Only include users with valid card data (unless that requirement is disabled)
+      && (current.user.hasCard || !document.getElementById('cbxRequireCardData').checked)
+      //If those checks passed, add the current user object to the output array
+      && accumulator.push(current),accumulator),
+    //Start with an initial value for 'accumulator' as an empty array
+    []);
+  }
+
+  function createPanelUsersListTable(){
+    document.getElementById("divPanelUsersList").innerHTML = "";
+    //Note: appendChild will return a reference to the child element allowing for chaining successive calls
+    //This also means that in chained calls, only the last call really returns a value to be stored in a variable assignment.
+    //So, for elements that do not need to be referenced again later, I've just chained additional appendChild calls to them.
+    document.getElementById("divPanelUsersList")
+      .appendChild(document.createElement('h3'))
+      .appendChild(document.createTextNode(selPanelsList.options[selPanelsList.selectedIndex].panelName + " Users:"));
+    btnExportToCsv = document.getElementById("divPanelUsersList").appendChild(document.createElement('button'));
+    btnExportToCsv.appendChild(document.createTextNode("Export to CSV"));
+    btnExportToCsv.addEventListener('click', (event) => {
+      exportUsers();
+    });
+    const panelUsersTable = document.getElementById("divPanelUsersList").appendChild(document.createElement('table'));
+    panelUsersTable.className = "panelUsersTable";
+    const panelUsersTableHeadRow = panelUsersTable.appendChild(document.createElement('thead')).appendChild(document.createElement('tr'));
+    let columnNumber = 0;
+    const excludedColumns = [0,1,7,8];
+    ["User Number", "User Name", "First Name", "Last Name", "Passcode", "Site Code", "Card Number", "Authority Levels", "Keyfob ID"].forEach(headerValue => {
+      const thisCell = panelUsersTableHeadRow.appendChild(document.createElement('th'))
+      if(excludedColumns.includes(columnNumber)) thisCell.className = "excluded";
+      thisCell.appendChild(document.createTextNode(headerValue));
+      columnNumber++;
+    })
+    const panelUsersTableBody = panelUsersTable.appendChild(document.createElement('tbody'));
+    panelUsersWorkingList.forEach(user => {
+      const row = panelUsersTableBody.appendChild(document.createElement('tr'));
+      row.appendChild(createUserTd(user.index, true));
+      row.appendChild(createUserTd(user.user.userName, true));
+      row.appendChild(createUserTd(user.user.firstName, false));
+      row.appendChild(createUserTd(user.user.lastName, false));
+      row.appendChild(createUserTd(user.user.passcode, false));
+      row.appendChild(createUserTd(user.user.hasCard ? user.user.siteCode : '', false));
+      row.appendChild(createUserTd(user.user.hasCard ? user.user.accessCode : '', false));
+      row.appendChild(createUserTd(user.user.areaLevels, true));
+      row.appendChild(createUserTd(user.user.keyFob, true));
+    })
+    document.getElementById('btnExport').style.visibility = '';
+    document.getElementById('btnDeleteUsers').style.visibility = '';
+  }
+
+  function createUserTd(text, excluded){
+    const thisCell = document.createElement('td');
+    if(excluded) thisCell.className = "excluded"
+    thisCell.appendChild(document.createTextNode(text));
+    return thisCell;
+  }
+
+  function exportToCsv(filename, rows) {
+    var processRow = function (row) {
+      var finalVal = '';
+      for (var j = 0; j < row.length; j++) {
+        var innerValue = row[j] === null ? '' : row[j].toString();
+        if (row[j] instanceof Date) {
+          innerValue = row[j].toLocaleString();
+        };
+        var result = innerValue.replace(/"/g, '""');
+        if (result.search(/("|,|\n)/g) >= 0)
+          result = '"' + result + '"';
+        if (j > 0)
+          finalVal += ',';
+        finalVal += result;
+      }
+      return finalVal + '\n';
+    };
+
+    var csvFile = '';
+    for (var i = 0; i < rows.length; i++) {
+      csvFile += processRow(rows[i]);
+    }
+
+    var blob = new Blob([csvFile], { type: 'text/csv;charset=utf-8;' });
+    if (navigator.msSaveBlob) { // IE 10+
+      navigator.msSaveBlob(blob, filename);
+    } else {
+      var link = document.createElement("a");
+      if (link.download !== undefined) { // feature detection
+        // Browsers that support HTML5 download attribute
+        var url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    }
+  }
+
+  function exportUsers() {
+    const usersArray = [["First Name", "Last Name", "Passcode", "Site Code", "Card Number", "AMS Card Type", "Number of bits"]];
+    panelUsersWorkingList.forEach(user => {
+      usersArray.push([user.user.firstName, user.user.lastName, user.user.passcode, (user.user.hasCard ? user.user.siteCode : ''), (user.user.hasCard ? user.user.accessCode : ''), 5, cardBitLength])
+    });
+    exportToCsv(selPanelsList.options[selPanelsList.selectedIndex].panelName, usersArray);
+  }
+
+  function hostnameChanged(){
+    console.log('hostnameChanged called');
+    const tbxRpsApiHostname = document.getElementById('tbxRpsApiHostname');
+    let hostnameValue = tbxRpsApiHostname.value;
+    if(hostnameValue == '')
+      hostnameValue = "<hostname>";
+    const testLink = document.getElementById('linkTestUrl')
+    testLink.innerText = "https://" + hostnameValue + ":9000/swagger";
+    testLink.href = "https://" + hostnameValue + ":9000/swagger";
+  }
+</script>
+<h2>Overview</h2>
+<p>This tool is intended to connect to an instance of RPS API with the purpose of exporting users, along with their passcode and card data, from one panel at a time. After logging in, selecting a panel, and then getting the user data, that data can then be exported to a CSV file which could be used to import those users into another system, such as AMS.</p>
+<h2>Prerequisites</h2>
+<p>Before using this tool, the HTTPS certificate from RPS API must be installed in this computer's <span style="font-style: italic;">local machine</span> "Trusted Root Certification Authorities" certificate store. If unsure, this can be tested by entering the RPS API hostname into the hostname field below, then click the test URL link. If properly prepared, this should load the Swagger test interface of the API with no certificate errors (or any other errors).</p>
+<br>
+<hr>
+<br>
+RPS API Hostname<input type="text" name="RpsApiHostname" id="tbxRpsApiHostname" value="" oninput="hostnameChanged()" tabindex="1">
+Test URL: <a href="" id="linkTestUrl" target="_blank" tabindex="-1">https://&lt;hostname&gt;:9000/swagger</a><br>
+RPS API Username<input type="text" name="RpsApiUsername" id="tbxRpsApiUsername" value="" tabindex="2"><br>
+RPS API Password<input type="password" name="RpsApiPassword" id="tbxRpsApiPassword" value="" tabindex="3"><br>
+
+<button id="btnLogIn" onclick="getRpsApiToken()" tabindex="4">Log in</button><br>
+<select name="PanelsList" id="selPanelsList" disabled></select><br>
+<button id="btnGetPanelUsers" onclick="getCardFormat()" disabled>Get Users</button>
+<div id="divPanelUsersOptions" style="display:none;">
+  <input type="checkbox" name="requirePasscode" checked id="cbxRequirePasscode">
+  <label for="requirePasscode">Require Passcode</label>
+  <input type="checkbox" name="requireCardData" id="cbxRequireCardData">
+  <label for="requireCardData">Require Valid Card Data</label>
+  <script type="text/javascript">
+    document.getElementById('cbxRequirePasscode').addEventListener('change', (event) => {
+      if(!event.target.checked)
+        initPanelUsersWorkingList();
+      filterPanelUsersWorkingList();
+      createPanelUsersListTable();
+    });
+
+    document.getElementById('cbxRequireCardData').addEventListener('change', (event) => {
+      if(!event.target.checked)
+        initPanelUsersWorkingList();
+      filterPanelUsersWorkingList();
+      createPanelUsersListTable();
+    });
+  </script>
+</div>
+<div id="divPanelUsersList"></div>
+<button id="btnExport" onclick="exportUsers()" style="visibility: hidden;">Export to CSV</button>&nbsp;&nbsp;
+<button id="btnDeleteUsers" onclick="deletePanelUsers()" style="visibility: hidden;">Delete all panel users</button>
+</body>
+</html>
