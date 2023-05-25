@@ -312,55 +312,6 @@
     return thisCell;
   }
 
-  function exportToCsv(filename, rows) {
-    var processRow = function (row) {
-      var finalVal = '';
-      for (var j = 0; j < row.length; j++) {
-        var innerValue = row[j] === null ? '' : row[j].toString();
-        if (row[j] instanceof Date) {
-          innerValue = row[j].toLocaleString();
-        };
-        var result = innerValue.replace(/"/g, '""');
-        if (result.search(/("|,|\n)/g) >= 0)
-          result = '"' + result + '"';
-        if (j > 0)
-          finalVal += ',';
-        finalVal += result;
-      }
-      return finalVal + '\n';
-    };
-
-    var csvFile = '';
-    for (var i = 0; i < rows.length; i++) {
-      csvFile += processRow(rows[i]);
-    }
-
-    var blob = new Blob([csvFile], { type: 'text/csv;charset=utf-8;' });
-    if (navigator.msSaveBlob) { // IE 10+
-      navigator.msSaveBlob(blob, filename);
-    } else {
-      var link = document.createElement("a");
-      if (link.download !== undefined) { // feature detection
-        // Browsers that support HTML5 download attribute
-        var url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", filename);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
-    }
-  }
-
-  function exportUsers() {
-    const usersArray = [["First Name", "Last Name", "Passcode", "Site Code", "Card Number", "AMS Card Type", "Number of bits"]];
-    panelUsersWorkingList.forEach(user => {
-      usersArray.push([user.user.firstName, user.user.lastName, user.user.passcode, (user.user.hasCard ? user.user.siteCode : ''), (user.user.hasCard ? user.user.accessCode : ''), 5, cardBitLength])
-    });
-    exportToCsv(selPanelsList.options[selPanelsList.selectedIndex].panelName, usersArray);
-  }
-
   function hostnameChanged(){
     console.log('hostnameChanged called');
     const tbxRpsApiHostname = document.getElementById('tbxRpsApiHostname');
@@ -371,27 +322,53 @@
     testLink.innerText = "https://" + hostnameValue + ":9000/swagger";
     testLink.href = "https://" + hostnameValue + ":9000/swagger";
   }
+
+
+  let jsonFileReader = new FileReader();
+  jsonFileReader.addEventListener("loadend", jsonFileLoaded);
+  var importObject;
+
+  function readJsonFile(input) {
+    const file = input.files[0];
+    jsonFileReader.readAsText(file);
+  }
+
+  function jsonFileLoaded(event){
+    console.log("JSON file loaded");
+    console.log(event.target.result);
+
+    importObject = JSON.parse(event.target.result);
+  }
 </script>
 <h2>Overview</h2>
-<p>This tool is intended to connect to an instance of RPS API with the purpose of exporting users, along with their passcode and card data, from one panel at a time. After logging in, selecting a panel, and then getting the user data, that data can then be exported to a CSV file which could be used to import those users into another system, such as AMS.</p>
+<p>This tool is intended to connect to an instance of RPS API with the purpose of importing users, along with their passcode and card data, 
+  to one panel at a time. After logging in, selecting a panel, and then getting the user data, that data can then be exported to a CSV file 
+  which could be used to import those users into another system, such as AMS.</p>
 <h2>Prerequisites</h2>
-<p>Before using this tool, the HTTPS certificate from RPS API must be installed in this computer's <span style="font-style: italic;">local machine</span> "Trusted Root Certification Authorities" certificate store. If unsure, this can be tested by entering the RPS API hostname into the hostname field below, then click the test URL link. If properly prepared, this should load the Swagger test interface of the API with no certificate errors (or any other errors).</p>
+<p>Before using this tool, the HTTPS certificate from RPS API must be installed in this computer's <span style="font-style: italic;">local 
+  machine</span> "Trusted Root Certification Authorities" certificate store. If unsure, this can be tested by entering the RPS API hostname 
+  into the hostname field below, then click the test URL link. If properly prepared, this should load the Swagger test interface of the API 
+  with no certificate errors (or any other errors).</p>
 <br>
 <hr>
 <br>
-RPS API Hostname<input type="text" name="RpsApiHostname" id="tbxRpsApiHostname" value="" oninput="hostnameChanged()" tabindex="1">
-Test URL: <a href="" id="linkTestUrl" target="_blank" tabindex="-1">https://&lt;hostname&gt;:9000/swagger</a><br>
-RPS API Username<input type="text" name="RpsApiUsername" id="tbxRpsApiUsername" value="" tabindex="2"><br>
-RPS API Password<input type="password" name="RpsApiPassword" id="tbxRpsApiPassword" value="" tabindex="3"><br>
-
+<div id="divImportFileSettings">
+  <input type="file" id="inpJsonImportFile" onchange="readJsonFile(this)">
+</div>
+<div id="divRpsApiSettings">
+  RPS API Hostname<input type="text" name="RpsApiHostname" id="tbxRpsApiHostname" value="" oninput="hostnameChanged()" tabindex="1">
+  Test URL: <a href="" id="linkTestUrl" target="_blank" tabindex="-1">https://&lt;hostname&gt;:9000/swagger</a><br>
+  RPS API Username<input type="text" name="RpsApiUsername" id="tbxRpsApiUsername" value="" tabindex="2"><br>
+  RPS API Password<input type="password" name="RpsApiPassword" id="tbxRpsApiPassword" value="" tabindex="3"><br>
+</div>
 <button id="btnLogIn" onclick="getRpsApiToken()" tabindex="4">Log in</button><br>
 <select name="PanelsList" id="selPanelsList" disabled></select><br>
 <button id="btnGetPanelUsers" onclick="getCardFormat()" disabled>Get Users</button>
 <div id="divPanelUsersOptions" style="display:none;">
   <input type="checkbox" name="requirePasscode" checked id="cbxRequirePasscode">
-  <label for="requirePasscode">Require Passcode</label>
+  <label for="cbxRequirePasscode">Require Passcode</label>
   <input type="checkbox" name="requireCardData" id="cbxRequireCardData">
-  <label for="requireCardData">Require Valid Card Data</label>
+  <label for="cbxRequireCardData">Require Valid Card Data</label>
   <script type="text/javascript">
     document.getElementById('cbxRequirePasscode').addEventListener('change', (event) => {
       if(!event.target.checked)
