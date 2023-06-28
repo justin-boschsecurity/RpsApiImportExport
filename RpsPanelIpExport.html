@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RPS API Panel IP Address Export</title>
+  <style type="text/css">
+    body {
+      font-family: monospace;
+      font-size: 11pt;
+    }
+
+    body * {
+      margin: 5px;
+    }
+
+    [disabled] {
+      display: none;
+    }
+
+    table, th, td {
+      border-collapse: collapse;
+      border: 1px solid black;
+      padding: 0 1em;
+    }
+
+    .excluded {
+      color: gray;
+    }
+
+    select {
+      font-family: monospace;
+    }
+  </style>
+</head>
+<body>
+<script type="text/javascript">
+
+  var RpsApiBaseUrl;
+  var RpsApiToken;
+  var panelsList;
+  var resultsObject = [];
+  var lastError;
+  var tokenResponse;
+  var lastResponseJson;
+
+  const maxDescriptionLength = 35;
+
+  async function getRpsApiToken() {
+    const RpsApiHostname = document.getElementById('tbxRpsApiHostname').value;
+    const RpsApiUsername = document.getElementById('tbxRpsApiUsername').value;
+    const RpsApiPassword = document.getElementById('tbxRpsApiPassword').value;
+    RpsApiBaseUrl = "https://" + RpsApiHostname + ":9000/rpsapi/"
+    const divProgressDisplay = document.getElementById('divProgressDisplay');
+    divProgressDisplay.innerHTML = "";
+    divProgressDisplay.appendChild(document.createTextNode("Authenticating..."))
+    try { 
+        const tokenResp = await fetch(RpsApiBaseUrl + 'token', {
+        method: 'POST',
+        body: "grant_type=password&username=" + RpsApiUsername + "&password=" + RpsApiPassword,
+        headers: {
+          'Authorization': 'Basic 0g==',
+          'Accept': 'application/json',
+          'Content-Type': 'application/x-www-form-urlencoded'
+        }
+      });
+      tokenResponse = tokenResp;
+      const tokenRespJson = await tokenResp.json();
+      if(!tokenResp.ok){
+        lastError = tokenResp;
+        alert("There was a problem getting the authentication token:\nStatus: " + tokenResp.status + ": " + tokenResp.statusText + "\n" + tokenRespJson.error + "\n" + tokenRespJson.error_description);
+      } else {
+        RpsApiToken = tokenRespJson.access_token;
+        console.log('RpsApiToken = ' + RpsApiToken);
+        document.getElementById('btnLogIn').disabled = true;
+        divProgressDisplay.innerHTML = "";
+        divProgressDisplay.appendChild(document.createTextNode("Authentication successful. Getting initial list of panels."))
+        getPanels();
+      }
+    } catch (error) {
+      lastError = error;
+      console.log(error);
+      alert('Failed to submit authentication request. \nIs the hostname and full URL correct?\nIs the HTTPS certificate for RPS API loaded on this computer?');
+    }
+  }
+
+  async function getPanels() {
+    const response = await fetch(RpsApiBaseUrl + 'v2/panels', { //?panelType=D9412GV2', {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + RpsApiToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    const panelsRespJson = await response.json();
+    if(!response.ok){
+      lastError = response;
+      alert("There was a problem getting the panels list:\nStatus: " + response.status + ": " + response.statusText + "\n" + panelsRespJson.error + "\n" + panelsRespJson.error_description);
+    } else {
+      const tblPanelList = document.getElementById('tblPanelList');
+      panelsList = panelsRespJson.returnObject;
+      panelsList.sort((a, b) => (a.name.toLowerCase() > b.name.toLowerCase()) ? 1 : -1);
+      const divProgressDisplay = document.getElementById('divProgressDisplay');
+      divProgressDisplay.innerHTML = "";
+      const panelCountDisplay = document.createTextNode(`Found ${panelsList.length} panels`);
+      divProgressDisplay.appendChild(panelCountDisplay);
+      const btnStartRetrievingPanelDetails = divProgressDisplay.appendChild(document.createElement('button'));
+      btnStartRetrievingPanelDetails.id = 'btnStartRetrievingPanelDetails';
+      btnStartRetrievingPanelDetails.appendChild(document.createTextNode('Start retrieving panel details'));
+      btnStartRetrievingPanelDetails.addEventListener('click', await startRetrievingPanelDetails);
+    }
+  }
+  const supportedPanelTypes = {
+    'B9512G': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B8512G': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B6512': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B5512': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B4512': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B3512': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B465': {
+      'network': false,
+      'cellular': true,
+      'cloud': true
+    },
+    'D9412GV4': {
+      'network': true,
+      'cellular': true,
+      'cloud': false
+    },
+    'D7412GV4': {
+      'network': true,
+      'cellular': true,
+      'cloud': false
+    },
+    "D9412GV4": {
+      'network': true,
+      'cellular': true,
+      'cloud': false
+    },
+    "D7412GV4": {
+      'network': true,
+      'cellular': true,
+      'cloud': false
+    },
+    "D7212GV4": {
+      'network': true,
+      'cellular': true,
+      'cloud': false
+    },
+    "D9412GV3": {
+      'network': true,
+      'cellular': false,
+      'cloud': false
+    },
+    "D7412GV3": {
+      'network': true,
+      'cellular': false,
+      'cloud': false
+    },
+    "D7212GV3": {
+      'network': true,
+      'cellular': false,
+      'cloud': false
+    }
+  };
+  const sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay))
+  var startTime = null;
+  var panelsInProgress = 0;
+  var completedPanels = 0;
+  var totalCompatiblePanels = 0;
+  var totalSkippedPanels = 0;
+  var continueRetrievingPanelDetails = true;
+  async function startRetrievingPanelDetails() {
+    startTime = Date.now();
+    continueRetrievingPanelDetails = true;
+    panelsInProgress = 0;
+    completedPanels = 0;
+    totalCompatiblePanels = panelsList.length;
+    const btnStartRetrievingPanelDetails = document.getElementById('btnStartRetrievingPanelDetails');
+    btnStartRetrievingPanelDetails.removeEventListener('click', await startRetrievingPanelDetails);
+    btnStartRetrievingPanelDetails.innerText = "Stop retrieving panel details";
+    btnStartRetrievingPanelDetails.addEventListener('click', stopRetrievingPanelDetails);
+    const spanProgressMessage = document.getElementById('divProgressDisplay').appendChild(document.createElement('span'));
+    spanProgressMessage.id = 'spanProgressMessage';
+    const tnodeProgressMessage = spanProgressMessage.appendChild(document.createTextNode(`Completed ${completedPanels} of ${panelsList.length}`));
+    tnodeProgressMessage.id = 'tnodeProgressMessage';
+    await panelsList.every(async (panel) => {
+      if(!supportedPanelTypes.hasOwnProperty(panel.panelType)) {
+        //console.log(`Skipping panel '${panel.name}' because panelType '${panel.panelType}' is not supported.`);
+        totalSkippedPanels++;
+        totalCompatiblePanels--;
+        tnodeProgressMessage.textContent = `Completed ${completedPanels} of ${totalCompatiblePanels}. (Skipped ${totalSkippedPanels} incompatible panels)`;
+        return;
+      }
+      while(panelsInProgress > 5 && continueRetrievingPanelDetails){
+        await sleep(100);
+      }
+      if(!continueRetrievingPanelDetails)
+        return;
+      panelsInProgress++;
+      //console.log(`panelsInProgress = ${panelsInProgress}`);
+      if(panel.romRevision === null) {
+        panel.romRevision = '';
+      }
+      let panelRow = {
+        'name': panel.name,
+        'panelType': panel.panelType,
+        'accountId': panel.accountID,
+        'description': panel.description.length > 50 ? panel.description.substr(0,50) + "..." : panel.description,
+        'romRevision': panel.romRevision,
+        'networkIp': '',
+        'cellularIp': '',
+        'cloudId': ''
+      }
+      //Get the Network IP
+      if(supportedPanelTypes[panel.panelType]['network']) {
+        const thisPanelNetworkIp = await getPanelNetworkIp(panel);
+        if(thisPanelNetworkIp === false) {
+          return false;
+        } else {
+          panelRow.networkIp = thisPanelNetworkIp;
+        }
+      } else {
+        panelRow.networkIp = 'Unsupported Panel Type';
+      }
+      //Get the Cellular IP
+      if(supportedPanelTypes[panel.panelType]['cellular']) {
+        panelRow.cellularIp = await getPanelCellularIp(panel);
+      } else {
+        panelRow.cellularIp = 'Unsupported Panel Type';
+      }
+      //Get the Cloud ID
+      if(supportedPanelTypes[panel.panelType]['cloud']) {
+        //if the panel type supports cloud, but the firmware version is too old to support it
+        if(panel.panelType !== 'B465' && (panel.romRevision == '' || panel.romRevision.startsWith('2'))) {
+          console.log(`Skipping Cloud ID for ${panel.name} because it is a ${panel.panelType} with firmware version ${panel.romRevision}`);
+          panelRow.cloudId = 'Unsupported Panel Type';
+        } else {
+          panelRow.cloudId = await getPanelCloudId(panel);
+        }
+        //panelRow.cloudId = await getPanelCloudId(panel);
+      } else {
+        panelRow.cloudId = 'Unsupported Panel Type';
+      }
+      //Add the panel as a new row on the table
+      resultsObject.push(panelRow);
+      /*const trNewRow = document.getElementById('tblPanelList').insertRow(-1);
+      for (const [key, value] of Object.entries(panelRow)) {
+        trNewRow.insertCell().appendChild(document.createTextNode(value));
+      };*/
+      panelsInProgress--;
+      completedPanels++;
+      tnodeProgressMessage.textContent = `Completed ${completedPanels} of ${totalCompatiblePanels}. (Skipped ${totalSkippedPanels} incompatible panels)`;
+    });
+    while(completedPanels < totalCompatiblePanels) {
+      await sleep(1000);
+    }
+    console.log(`Retrieving all panels' data took ${(Date.now() - startTime)/1000} seconds`);
+    console.log("Finished retrieving details. Starting to build table.");
+    const tblPanelList = document.getElementById('tblPanelList');
+    tblPanelList.style.visibility = '';
+    resultsObject.forEach(panelRow => {
+      const trNewRow = tblPanelList.insertRow(-1);
+      for (const [key, value] of Object.entries(panelRow)) {
+        trNewRow.insertCell().appendChild(document.createTextNode(value));
+      };
+    });
+  }
+
+  function stopRetrievingPanelDetails() {
+    continueRetrievingPanelDetails = false;
+    const btnStartRetrievingPanelDetails = document.getElementById('btnStartRetrievingPanelDetails');
+    btnStartRetrievingPanelDetails.removeEventListener('click', stopRetrievingPanelDetails);
+    btnStartRetrievingPanelDetails.innerText = "Start retrieving panel details";
+    btnStartRetrievingPanelDetails.addEventListener('click', startRetrievingPanelDetails);
+  }
+
+  async function getPanelNetworkIp(panel) {
+    const response = await fetch(RpsApiBaseUrl + `v2/panels/${panel.guid}/ip`, {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + RpsApiToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    const panelIpRespJson = await response.json();
+    if(!response.ok){
+      lastError = response;
+      //alert(`There was a problem getting the network IP for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelIpRespJson.error}\n ${panelIpRespJson.error_description}`);
+      console.log(`There was a problem getting the network IP for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelIpRespJson.error}\n ${panelIpRespJson.error_description}`);
+      return "ERROR";
+    } else {
+      lastResponseJson = panelIpRespJson;
+      if(panelIpRespJson.returnCode !== 'SUCCESS') {
+        lastError = panelIpRespJson;
+        //alert(`The response for the network IP for '${panel.name}' was not successful.\nreturnCode: ${panelIpRespJson.returnCode}\nreturnMessage: ${panelIpRespJson.returnMessage}`);
+        console.log(`The response for the network IP for '${panel.name}' was not successful.\nreturnCode: ${panelIpRespJson.returnCode}\nreturnMessage: ${panelIpRespJson.returnMessage}`);
+        return "ERROR";
+      }
+      return panelIpRespJson.returnObject.address;
+    }
+  }
+
+async function getPanelCellularIp(panel) {
+  const response = await fetch(RpsApiBaseUrl + `v2/panels/${panel.guid}/cellular`, {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer ' + RpsApiToken,
+      'Content-Type': 'application/json'
+    }
+  });
+  const panelCellularRespJson = await response.json();
+  if(!response.ok){
+    lastError = response;
+    //alert(`There was a problem getting the cellular IP for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelCellularRespJson.error}\n ${panelCellularRespJson.error_description}`);
+    console.log(`There was a problem getting the cellular IP for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelCellularRespJson.error}\n ${panelCellularRespJson.error_description}`);
+    return "ERROR";
+  } else {
+    lastResponseJson = panelCellularRespJson;
+    if(panelCellularRespJson.returnCode !== 'SUCCESS') {
+      lastError = panelCellularRespJson;
+      //alert(`The response for the cellular IP for '${panel.name}' was not successful.\nreturnCode: ${panelCellularRespJson.returnCode}\nreturnMessage: ${panelCellularRespJson.returnMessage}`);
+      console.log(`The response for the cellular IP for '${panel.name}' was not successful.\nreturnCode: ${panelCellularRespJson.returnCode}\nreturnMessage: ${panelCellularRespJson.returnMessage}`);
+      return "ERROR";
+    }
+    return panelCellularRespJson.returnObject.ip.address;
+  }
+}
+
+async function getPanelCloudId(panel) {
+  if(!panel.panelType.startsWith('B')){
+    return "Unsupported";
+  }
+  const response = await fetch(RpsApiBaseUrl + `v2/panels/${panel.guid}/cloud`, {
+    method: 'GET',
+    headers: {
+      'Authorization': 'Bearer ' + RpsApiToken,
+      'Content-Type': 'application/json'
+    }
+  });
+  const panelCloudRespJson = await response.json();
+  if(!response.ok){
+    lastError = response;
+    //alert(`There was a problem getting the cloud ID for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelCloudRespJson.error}\n ${panelCloudRespJson.error_description}`);
+    console.log(`There was a problem getting the cloud ID for '${panel.name}':\nPanel Type: ${panel.panelType}\nFirmware Version: ${panel.romRevision}\nStatus: ${response.status}: ${response.statusText}\n ${panelCloudRespJson.error}\n ${panelCloudRespJson.error_description}`);
+    return "ERROR";
+  } else {
+    lastResponseJson = panelCloudRespJson;
+    if(panelCloudRespJson.returnCode !== 'SUCCESS') {
+      lastError = panelCloudRespJson;
+      //alert(`The response for the cloud ID for '${panel.name}' was not successful.\nreturnCode: ${panelCloudRespJson.returnCode}\nreturnMessage: ${panelCloudRespJson.returnMessage}`);
+      console.log(`The response for the cloud ID for '${panel.name}' was not successful.\nPanel Type: ${panel.panelType}\nFirmware Version: ${panel.romRevision}\nreturnCode: ${panelCloudRespJson.returnCode}\nreturnMessage: ${panelCloudRespJson.returnMessage}`);
+      return "ERROR";
+    }
+    return panelCloudRespJson.returnObject.cloudId;
+  }
+}
+
+  function appendPanelRow(panelRow) {
+    const trNewRow = document.getElementById(tblPanelList).insertRow(-1);
+    panelRow.every(cellValue => {
+      trNewRow.insertCell().appendChild(document.createTextNode(cellValue));
+    });
+  }
+
+  function exportToCsv(filename, rows) {
+    var processRow = function (row) {
+      var finalVal = '';
+      for (var j = 0; j < row.length; j++) {
+        var innerValue = row[j] === null ? '' : row[j].toString();
+        if (row[j] instanceof Date) {
+          innerValue = row[j].toLocaleString();
+        };
+        var result = innerValue.replace(/"/g, '""');
+        if (result.search(/("|,|\n)/g) >= 0)
+          result = '"' + result + '"';
+        if (j > 0)
+          finalVal += ',';
+        finalVal += result;
+      }
+      return finalVal + '\n';
+    };
+
+    var csvFile = '';
+    for (var i = 0; i < rows.length; i++) {
+      csvFile += processRow(rows[i]);
+    }
+
+    var blob = new Blob([csvFile], { type: 'text/csv;charset=utf-8;' });
+    if (navigator.msSaveBlob) { // IE 10+
+      navigator.msSaveBlob(blob, filename);
+    } else {
+      var link = document.createElement("a");
+      if (link.download !== undefined) { // feature detection
+        // Browsers that support HTML5 download attribute
+        var url = URL.createObjectURL(blob);
+        link.setAttribute("href", url);
+        link.setAttribute("download", filename);
+        link.style.visibility = 'hidden';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+    }
+  }
+
+  function hostnameChanged(){
+    console.log('hostnameChanged called');
+    const tbxRpsApiHostname = document.getElementById('tbxRpsApiHostname');
+    let hostnameValue = tbxRpsApiHostname.value;
+    if(hostnameValue == '')
+      hostnameValue = "<hostname>";
+    const testLink = document.getElementById('linkTestUrl')
+    testLink.innerText = "https://" + hostnameValue + ":9000/swagger";
+    testLink.href = "https://" + hostnameValue + ":9000/swagger";
+  }
+</script>
+<h2>Overview</h2>
+<p>This tool is intended to connect to an instance of RPS API with the purpose of exporting a list of panels with the IP address RPS uses to connect to them.</p>
+<h2>Prerequisites</h2>
+<p>Before using this tool, the HTTPS certificate from RPS API must be installed in this computer's <span style="font-style: italic;">local machine</span> "Trusted Root Certification Authorities" certificate store. If unsure, this can be tested by entering the RPS API hostname into the hostname field below, then click the test URL link. If properly prepared, this should load the Swagger test interface of the API with no certificate errors (or any other errors).</p>
+<br>
+<hr>
+<br>
+RPS API Hostname<input type="text" name="RpsApiHostname" id="tbxRpsApiHostname" value="desktop-if9ddh8" oninput="hostnameChanged()" tabindex="1">
+Test URL: <a href="" id="linkTestUrl" target="_blank" tabindex="-1">https://&lt;hostname&gt;:9000/swagger</a><br>
+RPS API Username<input type="text" name="RpsApiUsername" id="tbxRpsApiUsername" value="rpsapi" tabindex="2"><br>
+RPS API Password<input type="password" name="RpsApiPassword" id="tbxRpsApiPassword" value="1111" tabindex="3"><br>
+
+<button id="btnLogIn" onclick="getRpsApiToken()" tabindex="4">Log in</button><br>
+<div id="divResultsDisplay">
+  <div id="divProgressDisplay"></div>
+  <table id="tblPanelList" style="visibility:hidden">
+    <thead>
+      <tr>
+        <th>Panel Name</th>
+        <th>Panel Type</th>
+        <th>Account Number</th>
+        <th>Description</th>
+        <th>Firmware Version</th>
+        <th>Network IP</th>
+        <th>Cellular IP</th>
+        <th>Cloud ID</th>
+      </tr>
+    </thead>
+    <tbody>
+
+    </tbody>
+  </table>
+</div>
+<script type="text/javascript">
+  hostnameChanged();
+</script>
+</body>
+</html>
