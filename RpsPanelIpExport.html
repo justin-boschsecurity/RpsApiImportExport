@@ -99,7 +99,13 @@
     } else {
       const tblPanelList = document.getElementById('tblPanelList');
       panelsList = panelsRespJson.returnObject;
-      panelsList.sort((a, b) => (a.name.toLowerCase() > b.name.toLowerCase()) ? 1 : -1);
+      panelsList.sort((a, b) => {
+        if(a.name === null)
+          a.name = '';
+        if(b.name === null)
+          b.name = '';
+        (a.name.toLowerCase() > b.name.toLowerCase()) ? 1 : -1
+      });
       const divProgressDisplay = document.getElementById('divProgressDisplay');
       divProgressDisplay.innerHTML = "";
       const panelCountDisplay = document.createTextNode(`Found ${panelsList.length} panels`);
@@ -187,7 +193,7 @@
       'cloud': false
     }
   };
-  const sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay))
+  const sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay));
   var startTime = null;
   var panelsInProgress = 0;
   var completedPanels = 0;
