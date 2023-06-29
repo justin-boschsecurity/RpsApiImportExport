@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>RPS API User Export</title>
+  <title>RPS API User Import</title>
   <style type="text/css">
     body {
       font-family: monospace;
@@ -38,7 +38,7 @@
 
   var RpsApiBaseUrl;
   var RpsApiToken;
-  var panelsList;
+  var panelsList = [];
   var panelUsersList;
   var panelUsersWorkingList;
   var lastClickedCBoxId;
@@ -48,6 +48,86 @@
   var cardBitLength;
 
   const maxDescriptionLength = 35;
+
+  const supportedPanelTypes = {
+    'B9512G': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B8512G': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B6512': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B5512': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B4512': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B3512': {
+      'network': true,
+      'cellular': true,
+      'cloud': true
+    },
+    'B465': {
+      'network': false,
+      'cellular': true,
+      'cloud': true
+    },
+    'D9412GV4': {
+      'network': true,
+      'cellular': true,
+      'cloud': false
+    },
+    'D7412GV4': {
+      'network': true,
+      'cellular': true,
+      'cloud': false
+    },
+    "D9412GV4": {
+      'network': true,
+      'cellular': true,
+      'cloud': false
+    },
+    "D7412GV4": {
+      'network': true,
+      'cellular': true,
+      'cloud': false
+    },
+    "D7212GV4": {
+      'network': true,
+      'cellular': true,
+      'cloud': false
+    },
+    "D9412GV3": {
+      'network': true,
+      'cellular': false,
+      'cloud': false
+    },
+    "D7412GV3": {
+      'network': true,
+      'cellular': false,
+      'cloud': false
+    },
+    "D7212GV3": {
+      'network': true,
+      'cellular': false,
+      'cloud': false
+    }
+  };
+
+  const sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay));
 
   async function getRpsApiToken() {
     const RpsApiHostname = document.getElementById('tbxRpsApiHostname').value;
@@ -83,54 +163,77 @@
   }
 
   async function getPanels() {
-    const response = await fetch(RpsApiBaseUrl + 'v2/panels', {
-      method: 'GET',
-      headers: {
-        'Authorization': 'Bearer ' + RpsApiToken,
-        'Content-Type': 'application/json'
+    let currentPanelType = '';
+    let requestsPending = 0;
+    await Object.keys(supportedPanelTypes).forEach(async (panelType) => {
+      requestsPending++;
+      while(currentPanelType !== '') {
+        await sleep(1000);
       }
-    });
-    const panelsRespJson = await response.json();
-    if(!response.ok){
-      lastError = response;
-      alert("There was a problem getting the panels list:\nStatus: " + response.status + ": " + response.statusText + "\n" + panelsRespJson.error + "\n" + panelsRespJson.error_description);
-    } else {
-      const selPanelsList = document.getElementById('selPanelsList');
-      panelsList = panelsRespJson.returnObject;
-      panelsList.sort((a, b) => (a.name.toLowerCase() > b.name.toLowerCase()) ? 1 : -1);
-      let nameLength = 0;
-      let typeLength = 0;
-      let accountLength = 0;
-      let descriptionLength = 0;
-      let revisionLength = 0;
-      panelsList.forEach(panel => {
-        if(panel.name === null) panel.name = '';
-        if(panel.panelType === null) panel.panelType = '';
-        if(panel.accountID === null) panel.accountID = '';
-        if(panel.description === null) panel.description = '';
-        if(panel.description.length > maxDescriptionLength) panel.description = panel.description.slice(0, maxDescriptionLength);
-        if(panel.romRevision === null) panel.romRevision = '';
-        nameLength = Math.max(panel.name.length, nameLength);
-        typeLength = Math.max(panel.panelType.length, typeLength);
-        accountLength = Math.max(panel.accountID.length, accountLength);
-        descriptionLength = Math.max(panel.description.length, descriptionLength);
-        revisionLength = Math.max(panel.romRevision.length, revisionLength);
-      })
-      panelsList.forEach(panel => {
-        let thisOption = selPanelsList.appendChild(document.createElement('option'));
-        thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.name.padEnd(nameLength + 3, '\xa0')));
-        thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.panelType.padEnd(typeLength + 3, '\xa0')));
-        thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.accountID.padEnd(accountLength + 3, '\xa0')));
-        thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.description.padEnd(descriptionLength + 3, '\xa0')));
-        thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.romRevision.padEnd(revisionLength + 3, '\xa0')));
-        thisOption.value = panel.guid;
-        thisOption.panelName = panel.name;
+      currentPanelType = panelType;
+      console.log(`Retrieving all ${panelType} panels`);
+      document.getElementById('divProgressDisplay').innerText = `Getting ${panelType} panels. ${panelsList.length} total retrieved so far`;
+      const response = await fetch(`${RpsApiBaseUrl}v2/panels?panelType=${panelType}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': 'Bearer ' + RpsApiToken,
+          'Content-Type': 'application/json'
+        }
       });
-      selPanelsList.size = (selPanelsList.options.length < 15 ? selPanelsList.options.length : 15);
-      selPanelsList.disabled = false;
-      document.getElementById('btnGetPanelUsers').disabled = false;
-      document.getElementById('divPanelUsersOptions').style.display = '';
+      const panelsRespJson = await response.json();
+      if(!response.ok){
+        lastError = response;
+        alert("There was a problem getting the panels list:\nStatus: " + response.status + ": " + response.statusText + "\n" + panelsRespJson.error + "\n" + panelsRespJson.error_description);
+      } else {
+        panelsList = panelsList.concat(panelsRespJson.returnObject);
+      }
+      currentPanelType = '';
+      requestsPending--;
+      console.log(`Finished retrieving all ${panelType} panels`);
+      console.log(`requestsPending = ${requestsPending}`);
+    })
+    while(requestsPending > 0) {
+      await sleep(1000);
     }
+    console.log("All panels retrieved");
+    document.getElementById('divProgressDisplay').innerText = `Finished loading ${panelsList.length} panels`;
+    fillPanelsSelectList();
+  }
+
+  function fillPanelsSelectList() {
+    panelsList.sort((a, b) => (a.name.toLowerCase() > b.name.toLowerCase()) ? 1 : -1);
+    let nameLength = 0;
+    let typeLength = 0;
+    let accountLength = 0;
+    let descriptionLength = 0;
+    let revisionLength = 0;
+    panelsList.forEach(panel => {
+      if(panel.name === null) panel.name = '';
+      if(panel.panelType === null) panel.panelType = '';
+      if(panel.accountID === null) panel.accountID = '';
+      if(panel.description === null) panel.description = '';
+      if(panel.description.length > maxDescriptionLength) panel.description = panel.description.slice(0, maxDescriptionLength);
+      if(panel.romRevision === null) panel.romRevision = '';
+      nameLength = Math.max(panel.name.length, nameLength);
+      typeLength = Math.max(panel.panelType.length, typeLength);
+      accountLength = Math.max(panel.accountID.length, accountLength);
+      descriptionLength = Math.max(panel.description.length, descriptionLength);
+      revisionLength = Math.max(panel.romRevision.length, revisionLength);
+    })
+    panelsList.forEach(panel => {
+      let thisOption = selPanelsList.appendChild(document.createElement('option'));
+      thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.name.padEnd(nameLength + 3, '\xa0')));
+      thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.panelType.padEnd(typeLength + 3, '\xa0')));
+      thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.accountID.padEnd(accountLength + 3, '\xa0')));
+      thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.description.padEnd(descriptionLength + 3, '\xa0')));
+      thisOption.appendChild(document.createElement('column')).appendChild(document.createTextNode(panel.romRevision.padEnd(revisionLength + 3, '\xa0')));
+      thisOption.value = panel.guid;
+      thisOption.panelName = panel.name;
+    });
+    selPanelsList.size = (selPanelsList.options.length < 15 ? selPanelsList.options.length : 15);
+    selPanelsList.disabled = false;
+    document.getElementById('btnGetPanelUsers').disabled = false;
+    document.getElementById('divPanelUsersOptions').style.display = '';
   }
 
   async function getCardFormat() {
@@ -362,6 +465,7 @@
   RPS API Password<input type="password" name="RpsApiPassword" id="tbxRpsApiPassword" value="" tabindex="3"><br>
 </div>
 <button id="btnLogIn" onclick="getRpsApiToken()" tabindex="4">Log in</button><br>
+<div id="divProgressDisplay"></div>
 <select name="PanelsList" id="selPanelsList" disabled></select><br>
 <button id="btnGetPanelUsers" onclick="getCardFormat()" disabled>Get Users</button>
 <div id="divPanelUsersOptions" style="display:none;">
