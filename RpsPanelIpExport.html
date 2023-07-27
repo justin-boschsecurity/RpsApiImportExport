@@ -116,6 +116,7 @@
       btnStartRetrievingPanelDetails.addEventListener('click', await startRetrievingPanelDetails);
     }
   }
+  
   const supportedPanelTypes = {
     'B9512G': {
       'network': true,
@@ -295,6 +296,18 @@
         trNewRow.insertCell().appendChild(document.createTextNode(value));
       };
     });
+/*
+
+      const btnStartRetrievingPanelDetails = divProgressDisplay.appendChild(document.createElement('button'));
+      btnStartRetrievingPanelDetails.id = 'btnStartRetrievingPanelDetails';
+      btnStartRetrievingPanelDetails.appendChild(document.createTextNode('Start retrieving panel details'));
+      btnStartRetrievingPanelDetails.addEventListener('click', await startRetrievingPanelDetails);
+*/
+
+    const btnExportToCsv = document.createElement('button');
+    btnExportToCsv.appendChild(document.createTextNode('Save results to CSV'));
+    btnExportToCsv.addEventListener('click', exportToCsv);
+    tblPanelList.parentNode.insertBefore(btnExportToCsv, tblPanelList);
   }
 
   function stopRetrievingPanelDetails() {
@@ -331,60 +344,60 @@
     }
   }
 
-async function getPanelCellularIp(panel) {
-  const response = await fetch(RpsApiBaseUrl + `v2/panels/${panel.guid}/cellular`, {
-    method: 'GET',
-    headers: {
-      'Authorization': 'Bearer ' + RpsApiToken,
-      'Content-Type': 'application/json'
-    }
-  });
-  const panelCellularRespJson = await response.json();
-  if(!response.ok){
-    lastError = response;
-    //alert(`There was a problem getting the cellular IP for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelCellularRespJson.error}\n ${panelCellularRespJson.error_description}`);
-    console.log(`There was a problem getting the cellular IP for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelCellularRespJson.error}\n ${panelCellularRespJson.error_description}`);
-    return "ERROR";
-  } else {
-    lastResponseJson = panelCellularRespJson;
-    if(panelCellularRespJson.returnCode !== 'SUCCESS') {
-      lastError = panelCellularRespJson;
-      //alert(`The response for the cellular IP for '${panel.name}' was not successful.\nreturnCode: ${panelCellularRespJson.returnCode}\nreturnMessage: ${panelCellularRespJson.returnMessage}`);
-      console.log(`The response for the cellular IP for '${panel.name}' was not successful.\nreturnCode: ${panelCellularRespJson.returnCode}\nreturnMessage: ${panelCellularRespJson.returnMessage}`);
+  async function getPanelCellularIp(panel) {
+    const response = await fetch(RpsApiBaseUrl + `v2/panels/${panel.guid}/cellular`, {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + RpsApiToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    const panelCellularRespJson = await response.json();
+    if(!response.ok){
+      lastError = response;
+      //alert(`There was a problem getting the cellular IP for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelCellularRespJson.error}\n ${panelCellularRespJson.error_description}`);
+      console.log(`There was a problem getting the cellular IP for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelCellularRespJson.error}\n ${panelCellularRespJson.error_description}`);
       return "ERROR";
+    } else {
+      lastResponseJson = panelCellularRespJson;
+      if(panelCellularRespJson.returnCode !== 'SUCCESS') {
+        lastError = panelCellularRespJson;
+        //alert(`The response for the cellular IP for '${panel.name}' was not successful.\nreturnCode: ${panelCellularRespJson.returnCode}\nreturnMessage: ${panelCellularRespJson.returnMessage}`);
+        console.log(`The response for the cellular IP for '${panel.name}' was not successful.\nreturnCode: ${panelCellularRespJson.returnCode}\nreturnMessage: ${panelCellularRespJson.returnMessage}`);
+        return "ERROR";
+      }
+      return panelCellularRespJson.returnObject.ip.address;
     }
-    return panelCellularRespJson.returnObject.ip.address;
   }
-}
 
-async function getPanelCloudId(panel) {
-  if(!panel.panelType.startsWith('B')){
-    return "Unsupported";
-  }
-  const response = await fetch(RpsApiBaseUrl + `v2/panels/${panel.guid}/cloud`, {
-    method: 'GET',
-    headers: {
-      'Authorization': 'Bearer ' + RpsApiToken,
-      'Content-Type': 'application/json'
+  async function getPanelCloudId(panel) {
+    if(!panel.panelType.startsWith('B')){
+      return "Unsupported";
     }
-  });
-  const panelCloudRespJson = await response.json();
-  if(!response.ok){
-    lastError = response;
-    //alert(`There was a problem getting the cloud ID for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelCloudRespJson.error}\n ${panelCloudRespJson.error_description}`);
-    console.log(`There was a problem getting the cloud ID for '${panel.name}':\nPanel Type: ${panel.panelType}\nFirmware Version: ${panel.romRevision}\nStatus: ${response.status}: ${response.statusText}\n ${panelCloudRespJson.error}\n ${panelCloudRespJson.error_description}`);
-    return "ERROR";
-  } else {
-    lastResponseJson = panelCloudRespJson;
-    if(panelCloudRespJson.returnCode !== 'SUCCESS') {
-      lastError = panelCloudRespJson;
-      //alert(`The response for the cloud ID for '${panel.name}' was not successful.\nreturnCode: ${panelCloudRespJson.returnCode}\nreturnMessage: ${panelCloudRespJson.returnMessage}`);
-      console.log(`The response for the cloud ID for '${panel.name}' was not successful.\nPanel Type: ${panel.panelType}\nFirmware Version: ${panel.romRevision}\nreturnCode: ${panelCloudRespJson.returnCode}\nreturnMessage: ${panelCloudRespJson.returnMessage}`);
+    const response = await fetch(RpsApiBaseUrl + `v2/panels/${panel.guid}/cloud`, {
+      method: 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + RpsApiToken,
+        'Content-Type': 'application/json'
+      }
+    });
+    const panelCloudRespJson = await response.json();
+    if(!response.ok){
+      lastError = response;
+      //alert(`There was a problem getting the cloud ID for '${panel.name}':\nStatus: ${response.status}: ${response.statusText}\n ${panelCloudRespJson.error}\n ${panelCloudRespJson.error_description}`);
+      console.log(`There was a problem getting the cloud ID for '${panel.name}':\nPanel Type: ${panel.panelType}\nFirmware Version: ${panel.romRevision}\nStatus: ${response.status}: ${response.statusText}\n ${panelCloudRespJson.error}\n ${panelCloudRespJson.error_description}`);
       return "ERROR";
+    } else {
+      lastResponseJson = panelCloudRespJson;
+      if(panelCloudRespJson.returnCode !== 'SUCCESS') {
+        lastError = panelCloudRespJson;
+        //alert(`The response for the cloud ID for '${panel.name}' was not successful.\nreturnCode: ${panelCloudRespJson.returnCode}\nreturnMessage: ${panelCloudRespJson.returnMessage}`);
+        console.log(`The response for the cloud ID for '${panel.name}' was not successful.\nPanel Type: ${panel.panelType}\nFirmware Version: ${panel.romRevision}\nreturnCode: ${panelCloudRespJson.returnCode}\nreturnMessage: ${panelCloudRespJson.returnMessage}`);
+        return "ERROR";
+      }
+      return panelCloudRespJson.returnObject.cloudId;
     }
-    return panelCloudRespJson.returnObject.cloudId;
   }
-}
 
   function appendPanelRow(panelRow) {
     const trNewRow = document.getElementById(tblPanelList).insertRow(-1);
@@ -393,8 +406,8 @@ async function getPanelCloudId(panel) {
     });
   }
 
-  function exportToCsv(filename, rows) {
-    var processRow = function (row) {
+  function exportToCsv() {
+    /*var processRow = function (row) {
       var finalVal = '';
       for (var j = 0; j < row.length; j++) {
         var innerValue = row[j] === null ? '' : row[j].toString();
@@ -414,18 +427,25 @@ async function getPanelCloudId(panel) {
     var csvFile = '';
     for (var i = 0; i < rows.length; i++) {
       csvFile += processRow(rows[i]);
-    }
+    }*/
+
+    const replacer = (key, value) => value === null ? '' : value; // specifiy how to handle null values here
+    const header = Object.keys(resultsObject[0]);
+    const csvFile = [
+      header.join(','), // header row first
+      ...resultsObject.map(row => header.map(fieldName => JSON.stringify(row[fieldName], replacer)).join(','))
+    ].join('\r\n');
 
     var blob = new Blob([csvFile], { type: 'text/csv;charset=utf-8;' });
     if (navigator.msSaveBlob) { // IE 10+
-      navigator.msSaveBlob(blob, filename);
+      navigator.msSaveBlob(blob, "PanelIpReport.csv");
     } else {
       var link = document.createElement("a");
       if (link.download !== undefined) { // feature detection
         // Browsers that support HTML5 download attribute
         var url = URL.createObjectURL(blob);
         link.setAttribute("href", url);
-        link.setAttribute("download", filename);
+        link.setAttribute("download", "PanelIpReport.csv");
         link.style.visibility = 'hidden';
         document.body.appendChild(link);
         link.click();
